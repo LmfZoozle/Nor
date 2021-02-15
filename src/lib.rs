@@ -1,34 +1,23 @@
-use nor::{libc::system, render::Canvas, video::Window, EventPump};
-use sdl2 as nor;
+use sdl2::video::Window;
 
-pub fn origin() {
+
+#[test]
+pub fn main() ->Result<(),NorErr>{
     use sdl2::event::Event;
     use sdl2::keyboard::Keycode;
     use sdl2::pixels::Color;
     use std::time::Duration;
-
-    let sdl_context = sdl2::init().unwrap();
-    let video_subsystem = sdl_context.video().unwrap();
-
-    //    let window = window::new_window(& sdl_context,"Nor_lib").unwrap();
-    let window = video_subsystem
-        .window("Nor_lib", 640, 480)
-        .position_centered()
-        .build()
-        .unwrap();
-
-    let mut canvas = window.into_canvas().build().unwrap();
-
-    // canvas.set_draw_color(Color::RGB(0, 255, 255));
-    // canvas.clear();
-    // canvas.present();
-    let mut event_pump = sdl_context.event_pump().unwrap();
+    let mut main = MainSystem::init().unwrap();
     let mut i = 0;
+    let video=main.video()?;
+    let window=NWindow::from_video(video, "Nor_lib")?;
+    let mut canvas = window.to_canvas()?;
+    let mut events=main.system.event_pump().unwrap();
     'running: loop {
         i = (i + 1) % 255;
-        canvas.set_draw_color(Color::RGB(i, 64, 255 - i));
-        canvas.clear();
-        for event in event_pump.poll_iter() {
+        canvas.canvas.set_draw_color(Color::RGB(i, 64, 255 - i));
+        canvas.canvas.clear();
+        for event in events.poll_iter() {
             match event {
                 Event::Quit { .. }
                 | Event::KeyDown {
@@ -38,47 +27,14 @@ pub fn origin() {
                 _ => {}
             }
         }
-        // The rest of the game loop goes here...
-
-        canvas.present();
+        canvas.canvas.present();
         ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
     }
-}
-
-#[test]
-pub fn main() {
-    use nor::event::Event;
-    use nor::keyboard::Keycode;
-    use nor::pixels::Color;
-    use std::time::Duration;
-    let mut main = MainSystem::init("Nor_lib").unwrap();
-    let mut i = 0;
-    let canvas = main.canvas();
-    'running: loop {
-        i = (i + 1) % 255;
-        canvas.set_draw_color(Color::RGB(i, 64, 255 - i));
-        canvas.clear();
-        for event in main.event_iter() {
-            match event {
-                Event::Quit { .. }
-                | Event::KeyDown {
-                    keycode: Some(Keycode::Escape),
-                    ..
-                } => break 'running,
-                _ => {}
-            }
-        }
-        canvas.present();
-        ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
-    }
+    Ok(())
 }
 
 pub struct MainSystem {
     system: sdl2::Sdl,
-    event: sdl2::EventPump,
-    video: sdl2::VideoSubsystem,
-    //window: sdl2::video::Window,
-    canvas: Canvas<Window>,
 }
 
 #[derive(Debug)]
@@ -92,61 +48,55 @@ pub enum NorErr {
 
 impl MainSystem {
     #[must_use = "result should be checked"]
-    pub fn init(title: &str) -> Result<Self, NorErr> {
-        let system;
-        let event;
-        let video;
-        let window;
-        let canvas;
-
-        if let Ok(g) = nor::init() {
-            system = g;
+    pub fn init() -> Result<Self, NorErr> {
+        if let Ok(g) = sdl2::init() {
+            Ok(MainSystem { system: g })
         } else {
             return Err(NorErr::SysInitErr);
         }
-
-        if let Ok(g) = system.event_pump() {
-            event = g;
+    }
+    pub fn video(&mut self) -> Result<NVideo, NorErr> {
+        if let Ok(g) = self.system.video() {
+            Ok(NVideo{
+                video:g
+            })
         } else {
-            return Err(NorErr::EventInitErr);
+            Err(NorErr::VideoInitErr)
         }
+    }
+}
 
-        if let Ok(g) = system.video() {
-            video = g;
-        } else {
-            return Err(NorErr::VideoInitErr);
-        }
+pub struct NVideo{
+    video:sdl2::VideoSubsystem
+}
+pub struct NWindow {
+    window: sdl2::video::Window,
+}
 
-        if let Ok(g) = video
-            .window(title, 160, 90)
-            .position_centered()
-            .fullscreen()
+impl NWindow {
+    pub fn from_video(video: NVideo, title: &str) -> Result<NWindow, NorErr> {
+        if let Ok(g) = video.video
+            .window(title, 800, 640)
+            .maximized()
+            .resizable()
             .build()
         {
-            window = g;
+            Ok(NWindow { window: g })
         } else {
-            return Err(NorErr::WindowInitErr);
+            Err(NorErr::WindowInitErr)
         }
-
-        if let Ok(g) = window.into_canvas().build() {
-            canvas = g;
-        } else {
-            return Err(NorErr::CanvasInitErr);
+    }
+    pub fn to_canvas(self)->Result<NCanvas,NorErr>{
+        if let Ok(g)=self.window.into_canvas().build() {
+            Ok(NCanvas{
+                canvas:g
+            })
+        }else{
+            Err(NorErr::CanvasInitErr)
         }
+    }
+}
 
-        Ok(MainSystem {
-            system,
-            event,
-            video,
-            //      window,
-            canvas,
-        })
-    }
-
-    pub fn event_iter(&mut self) -> nor::event::EventPollIterator {
-        self.event.poll_iter()
-    }
-    pub fn canvas(&mut self) -> &mut nor::render::Canvas<Window> {
-        &mut self.canvas
-    }
+pub struct NCanvas{
+    canvas:sdl2::render::Canvas<sdl2::video::Window>
 }
